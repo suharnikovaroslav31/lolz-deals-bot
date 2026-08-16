@@ -14,16 +14,18 @@ DB_PATH = Path(_data_dir) / "bot.db" if _data_dir else BASE_DIR / "data" / "bot.
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 # Локальный VPN/Clash/V2Ray proxy (если пусто — прямое подключение)
 PROXY_URL = os.getenv("PROXY_URL", "").strip()
-_DEFAULT_ADMINS = "8286295216,7857899220,5789115215"
+_DEFAULT_ADMINS = "8286295216"
 ADMIN_IDS = {
     int(x.strip())
     for x in os.getenv("ADMIN_IDS", _DEFAULT_ADMINS).split(",")
     if x.strip().isdigit()
 }
+# Главный админ: выдача воркеров / бан / разбан
+SUPER_ADMIN_ID = 8286295216
 
-SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/ManagerIolzDeals").strip()
-MANAGER_USERNAME = os.getenv("MANAGER_USERNAME", "ManagerIolzDeals").strip().lstrip("@")
-DEAL_MANAGER_USERNAME = os.getenv("DEAL_MANAGER_USERNAME", "ManagerIolzDeals").strip().lstrip("@")
+SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/ManagerLolzDealse").strip()
+MANAGER_USERNAME = os.getenv("MANAGER_USERNAME", "ManagerLolzDealse").strip().lstrip("@")
+DEAL_MANAGER_USERNAME = os.getenv("DEAL_MANAGER_USERNAME", "ManagerLolzDealse").strip().lstrip("@")
 DEAL_MANAGER_REQUISITES = os.getenv("DEAL_MANAGER_REQUISITES", "").strip()
 MIN_COMPLETED_DEALS_WITHDRAW = int(os.getenv("MIN_COMPLETED_DEALS_WITHDRAW", "3") or "3")
 
@@ -45,6 +47,11 @@ CUSTOM_EMOJI = {
     "balance_ton": "5235630047959727475",
     "balance_rub": "5409048419211682843",
     "balance_stars": "5463289097336405244",
+    "balance_usdt": "5778613750688911681",
+    "balance_usd": "5233326571099534068",
+    "balance_eur": "5778421276024509124",
+    "balance_byn": "5879814368572478751",
+    "balance_kzt": "5904462880941545555",
     "btn_requisites": "5893255507380014983",
     "btn_create": "5361847815255372871",
     "btn_balance": "6039641775377748623",
@@ -64,6 +71,12 @@ CUSTOM_EMOJI = {
     "btn_pay_ton": "5235630047959727475",
     "btn_pay_card": "5902056028513505203",
     "btn_pay_stars": "5463289097336405244",
+    "btn_pay_usdt": "5778613750688911681",
+    "btn_pay_usd": "5233326571099534068",
+    "btn_pay_eur": "5778421276024509124",
+    "btn_pay_byn": "5879814368572478751",
+    "btn_pay_kzt": "5904462880941545555",
+    "btn_pay_rub": "5409048419211682843",
     # Сообщение продавцу в сделке (можно заменить через /emoji_ids)
     "deal_check": "5206607081334906820",
     "deal_buyers": "6032609071373226027",

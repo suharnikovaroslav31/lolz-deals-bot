@@ -31,6 +31,7 @@ from texts.deal_messages import (
 )
 from texts.i18n import deal_pay_labels, deal_type_labels, requisites_text, t
 from utils.admin_access import is_admin
+from utils.currencies import PAY_REQUISITE, PAY_TO_BALANCE
 from utils.lang import get_lang
 
 router = Router()
@@ -118,7 +119,8 @@ async def choose_pay(callback: CallbackQuery, state: FSMContext) -> None:
     # Реквизиты нужны тому, кто принимает оплату (продавец)
     if data["creator_role"] == "seller":
         user = await db.get_user(callback.from_user.id)
-        if pay_method == "ton" and not (user and user["ton_wallet"]):
+        need = PAY_REQUISITE.get(pay_method)
+        if need == "ton" and not (user and user["ton_wallet"]):
             await callback.answer(t(lang, "need_ton"), show_alert=True)
             text = requisites_text(
                 lang,
@@ -128,7 +130,7 @@ async def choose_pay(callback: CallbackQuery, state: FSMContext) -> None:
             await state.clear()
             await _edit(callback, text, requisites_menu(lang))
             return
-        if pay_method == "card" and not (user and user["card_number"]):
+        if need == "card" and not (user and user["card_number"]):
             await callback.answer(t(lang, "need_card"), show_alert=True)
             text = requisites_text(
                 lang,
@@ -400,7 +402,7 @@ async def buyer_confirm_received(callback: CallbackQuery) -> None:
 
     # Начисляем продавцу сумму сделки (покупатель уже списал с баланса при оплате)
     pay_method = deal["pay_method"]
-    credit_currency = {"ton": "ton", "card": "rub", "stars": "stars"}.get(pay_method)
+    credit_currency = PAY_TO_BALANCE.get(pay_method)
     if credit_currency and deal["seller_id"]:
         try:
             await db.add_balance(int(deal["seller_id"]), credit_currency, float(deal["amount"]))

@@ -6,45 +6,135 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from database import db
+from keyboards.main import _btn
 from states.admin import AdminStates
-from utils.admin_access import is_admin
+from utils.admin_access import is_admin, is_super_admin
+from utils.currencies import BALANCE_KEYS, BALANCE_META
+from utils.emoji import ce
 
 router = Router()
 
-CURRENCY_LABELS = {
-    "ton": "💎 TON",
-    "rub": "💵 RUB",
-    "stars": "⭐ Stars",
-}
 
-
-def admin_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💎 Начислить TON", callback_data="admin:add:ton")],
-            [InlineKeyboardButton(text="💵 Начислить RUB", callback_data="admin:add:rub")],
-            [InlineKeyboardButton(text="⭐ Начислить Stars", callback_data="admin:add:stars")],
-            [InlineKeyboardButton(text="👤 Мой баланс", callback_data="admin:balance")],
-            [InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin:grant")],
-            [InlineKeyboardButton(text="❌ Закрыть", callback_data="admin:close")],
+def admin_menu(user_id: int | None = None) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            _btn(
+                "Начислить баланс",
+                fallback_emoji="💰",
+                callback="admin:credit",
+                icon_key="deal_money",
+            )
+        ],
+        [
+            _btn(
+                "Мой баланс",
+                fallback_emoji="👤",
+                callback="admin:balance",
+                icon_key="deal_person",
+            )
+        ],
+    ]
+    if user_id is not None and is_super_admin(user_id):
+        rows.append(
+            [
+                _btn(
+                    "Добавить воркера",
+                    fallback_emoji="➕",
+                    callback="admin:grant",
+                    icon_key="btn_create",
+                )
+            ]
+        )
+        rows.append(
+            [
+                _btn(
+                    "Забанить",
+                    fallback_emoji="🚫",
+                    callback="admin:ban",
+                    icon_key="btn_cancel",
+                ),
+                _btn(
+                    "Разбанить",
+                    fallback_emoji="✅",
+                    callback="admin:unban",
+                    icon_key="btn_deal_recv",
+                ),
+            ]
+        )
+    rows.append(
+        [
+            _btn(
+                "Закрыть",
+                fallback_emoji="❌",
+                callback="admin:close",
+                icon_key="btn_cancel",
+            )
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_currency_menu() -> InlineKeyboardMarkup:
+    from utils.currencies import BALANCE_META, rows_of
+
+    buttons = [
+        _btn(
+            meta["label"],
+            fallback_emoji=meta["fallback"],
+            callback=f"admin:add:{key}",
+            icon_key=meta["btn_icon"],
+        )
+        for key, meta in BALANCE_META.items()
+    ]
+    rows = rows_of(buttons, 2)
+    rows.append(
+        [
+            _btn(
+                "Назад",
+                fallback_emoji="🔙",
+                callback="admin:cancel",
+                icon_key="btn_back",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_cancel() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel")]]
+        inline_keyboard=[
+            [
+                _btn(
+                    "Отмена",
+                    fallback_emoji="❌",
+                    callback="admin:cancel",
+                    icon_key="btn_cancel",
+                )
+            ]
+        ]
     )
 
 
 def _balance_text(user) -> str:
-    if not user:
-        return "💎 TON: 0.00\n💵 RUB: 0.00\n⭐ Stars: 0"
-    return (
-        f"💎 TON: {float(user['balance_ton'] or 0):.2f}\n"
-        f"💵 RUB: {float(user['balance_rub'] or 0):.2f}\n"
-        f"⭐ Stars: {int(user['balance_stars'] or 0)}"
-    )
+    from utils.currencies import BALANCE_GROUPS, BALANCE_META
+
+    lines = []
+    for group_name, keys in BALANCE_GROUPS:
+        lines.append(f"<b>{group_name}</b>")
+        for key in keys:
+            meta = BALANCE_META[key]
+            col = f"balance_{key}"
+            try:
+                raw = user[col] if user else 0
+            except (KeyError, IndexError, TypeError):
+                raw = 0
+            icon = ce(meta["emoji_key"], meta["fallback"])
+            if meta["integer"]:
+                lines.append(f"{icon} {meta['label']}: {int(raw or 0)}")
+            else:
+                lines.append(f"{icon} {meta['label']}: {float(raw or 0):.2f}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 async def _deny_if_not_admin(event: Message | CallbackQuery) -> bool:
@@ -61,6 +151,31 @@ async def _deny_if_not_admin(event: Message | CallbackQuery) -> bool:
     return True
 
 
+async def _deny_if_not_super_admin(event: Message | CallbackQuery) -> bool:
+    if await _deny_if_not_admin(event):
+        return True
+    uid = event.from_user.id
+    if is_super_admin(uid):
+        return False
+    if isinstance(event, CallbackQuery):
+        await event.answer("Нет доступа", show_alert=True)
+    else:
+        await event.answer("❌ Нет доступа к этой функции.")
+    return True
+
+
+async def _parse_telegram_id(message: Message) -> int | None:
+    raw = message.text.strip()
+    if not raw.isdigit():
+        await message.answer("❌ Нужен числовой Telegram ID.", reply_markup=admin_cancel())
+        return None
+    user_id = int(raw)
+    if user_id <= 0:
+        await message.answer("❌ Некорректный ID.", reply_markup=admin_cancel())
+        return None
+    return user_id
+
+
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext) -> None:
     if await _deny_if_not_admin(message):
@@ -68,7 +183,7 @@ async def cmd_admin(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
         "🛠 <b>Админ-панель</b>\n\nВыберите действие:",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(message.from_user.id),
     )
 
 
@@ -79,7 +194,7 @@ async def menu_admin(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.answer(
         "🛠 <b>Админ-панель</b>\n\nВыберите действие:",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(callback.from_user.id),
     )
     await callback.answer()
 
@@ -100,7 +215,19 @@ async def admin_cancel_cb(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text(
         "🛠 <b>Админ-панель</b>\n\nВыберите действие:",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(callback.from_user.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:credit")
+async def admin_credit_start(callback: CallbackQuery, state: FSMContext) -> None:
+    if await _deny_if_not_admin(callback):
+        return
+    await state.clear()
+    await callback.message.edit_text(
+        "💰 <b>Выберите валюту</b>",
+        reply_markup=admin_currency_menu(),
     )
     await callback.answer()
 
@@ -110,14 +237,16 @@ async def admin_add_start(callback: CallbackQuery, state: FSMContext) -> None:
     if await _deny_if_not_admin(callback):
         return
     currency = callback.data.split(":")[-1]
-    if currency not in CURRENCY_LABELS:
+    meta = BALANCE_META.get(currency)
+    if not meta:
         await callback.answer("Неизвестная валюта", show_alert=True)
         return
 
     await state.set_state(AdminStates.waiting_amount)
     await state.update_data(currency=currency, target_id=callback.from_user.id)
+    icon = ce(meta["emoji_key"], meta["fallback"])
     await callback.message.edit_text(
-        f"Начисление {CURRENCY_LABELS[currency]} себе\n\n"
+        f"Начисление {icon} <b>{meta['label']}</b> себе\n\n"
         "Введите сумму начисления\n"
         "(можно отрицательную, чтобы списать)",
         reply_markup=admin_cancel(),
@@ -133,18 +262,18 @@ async def admin_balance_view(callback: CallbackQuery, state: FSMContext) -> None
     user = await db.get_user(callback.from_user.id)
     await callback.message.edit_text(
         f"👤 <b>Ваш баланс</b>\n\n{_balance_text(user)}",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(callback.from_user.id),
     )
     await callback.answer()
 
 
 @router.callback_query(F.data == "admin:grant")
 async def admin_grant_start(callback: CallbackQuery, state: FSMContext) -> None:
-    if await _deny_if_not_admin(callback):
+    if await _deny_if_not_super_admin(callback):
         return
     await state.set_state(AdminStates.waiting_admin_id)
     await callback.message.edit_text(
-        "➕ <b>Добавить админа</b>\n\n"
+        "➕ <b>Добавить воркера</b>\n\n"
         "Отправьте Telegram ID пользователя числом\n"
         "(например <code>123456789</code>)",
         reply_markup=admin_cancel(),
@@ -154,24 +283,18 @@ async def admin_grant_start(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(AdminStates.waiting_admin_id, F.text)
 async def admin_got_admin_id(message: Message, state: FSMContext) -> None:
-    if await _deny_if_not_admin(message):
+    if await _deny_if_not_super_admin(message):
         return
 
-    raw = message.text.strip()
-    if not raw.isdigit():
-        await message.answer("❌ Нужен числовой Telegram ID.", reply_markup=admin_cancel())
-        return
-
-    new_id = int(raw)
-    if new_id <= 0:
-        await message.answer("❌ Некорректный ID.", reply_markup=admin_cancel())
+    new_id = await _parse_telegram_id(message)
+    if new_id is None:
         return
 
     added = await db.add_admin(new_id)
     await state.clear()
 
     if added:
-        text = f"✅ Пользователь <code>{new_id}</code> добавлен в админы."
+        text = f"✅ Пользователь <code>{new_id}</code> добавлен как воркер."
         try:
             await message.bot.send_message(
                 new_id,
@@ -181,14 +304,86 @@ async def admin_got_admin_id(message: Message, state: FSMContext) -> None:
         except Exception:
             text += "\n\n⚠️ Не удалось уведомить пользователя (он ещё не писал боту)."
     else:
-        text = f"ℹ️ <code>{new_id}</code> уже является админом."
+        text = f"ℹ️ <code>{new_id}</code> уже является воркером."
 
     admins = await db.list_admins()
     ids_line = ", ".join(f"<code>{a}</code>" for a in admins)
     await message.answer(
-        f"{text}\n\nТекущие админы:\n{ids_line}",
-        reply_markup=admin_menu(),
+        f"{text}\n\nТекущие воркеры:\n{ids_line}",
+        reply_markup=admin_menu(message.from_user.id),
     )
+
+
+@router.callback_query(F.data == "admin:ban")
+async def admin_ban_start(callback: CallbackQuery, state: FSMContext) -> None:
+    if await _deny_if_not_super_admin(callback):
+        return
+    await state.set_state(AdminStates.waiting_ban_id)
+    await callback.message.edit_text(
+        "🚫 <b>Забанить</b>\n\n"
+        "Отправьте Telegram ID пользователя числом\n"
+        "(например <code>123456789</code>)",
+        reply_markup=admin_cancel(),
+    )
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_ban_id, F.text)
+async def admin_got_ban_id(message: Message, state: FSMContext) -> None:
+    if await _deny_if_not_super_admin(message):
+        return
+
+    target_id = await _parse_telegram_id(message)
+    if target_id is None:
+        return
+
+    if is_super_admin(target_id):
+        await state.clear()
+        await message.answer(
+            "❌ Нельзя забанить этого пользователя.",
+            reply_markup=admin_menu(message.from_user.id),
+        )
+        return
+
+    banned = await db.ban_user(target_id)
+    await state.clear()
+    if banned:
+        text = f"🚫 Пользователь <code>{target_id}</code> забанен."
+    else:
+        text = f"ℹ️ <code>{target_id}</code> уже в бане."
+    await message.answer(text, reply_markup=admin_menu(message.from_user.id))
+
+
+@router.callback_query(F.data == "admin:unban")
+async def admin_unban_start(callback: CallbackQuery, state: FSMContext) -> None:
+    if await _deny_if_not_super_admin(callback):
+        return
+    await state.set_state(AdminStates.waiting_unban_id)
+    await callback.message.edit_text(
+        "✅ <b>Разбанить</b>\n\n"
+        "Отправьте Telegram ID пользователя числом\n"
+        "(например <code>123456789</code>)",
+        reply_markup=admin_cancel(),
+    )
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_unban_id, F.text)
+async def admin_got_unban_id(message: Message, state: FSMContext) -> None:
+    if await _deny_if_not_super_admin(message):
+        return
+
+    target_id = await _parse_telegram_id(message)
+    if target_id is None:
+        return
+
+    unbanned = await db.unban_user(target_id)
+    await state.clear()
+    if unbanned:
+        text = f"✅ Пользователь <code>{target_id}</code> разбанен."
+    else:
+        text = f"ℹ️ <code>{target_id}</code> не был в бане."
+    await message.answer(text, reply_markup=admin_menu(message.from_user.id))
 
 
 @router.message(AdminStates.waiting_amount, F.text)
@@ -210,23 +405,31 @@ async def admin_got_amount(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     target_id = int(data.get("target_id") or message.from_user.id)
     currency = data.get("currency")
-    if currency not in CURRENCY_LABELS:
+    meta = BALANCE_META.get(currency or "")
+    if not meta or currency not in BALANCE_KEYS:
         await state.clear()
-        await message.answer("Сессия сброшена. Откройте /admin снова.", reply_markup=admin_menu())
+        await message.answer(
+            "Сессия сброшена. Откройте /admin снова.",
+            reply_markup=admin_menu(message.from_user.id),
+        )
         return
 
-    if currency == "stars" and not float(amount).is_integer():
-        await message.answer("❌ Stars должны быть целым числом.", reply_markup=admin_cancel())
+    if meta["integer"] and not float(amount).is_integer():
+        await message.answer(
+            f"❌ {meta['label']} должны быть целым числом.",
+            reply_markup=admin_cancel(),
+        )
         return
 
     user = await db.add_balance(target_id, currency, amount)
     await state.clear()
 
     sign = "+" if amount > 0 else ""
+    icon = ce(meta["emoji_key"], meta["fallback"])
     await message.answer(
         f"✅ Готово\n\n"
-        f"{CURRENCY_LABELS[currency]}: {sign}{amount:g}\n\n"
+        f"{icon} {meta['label']}: {sign}{amount:g}\n\n"
         f"Текущий баланс:\n"
         f"{_balance_text(user)}",
-        reply_markup=admin_menu(),
+        reply_markup=admin_menu(message.from_user.id),
     )

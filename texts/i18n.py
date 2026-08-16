@@ -48,6 +48,16 @@ TEXTS = {
         "btn_pay_ton": "На TON-кошелек",
         "btn_pay_card": "На карту",
         "btn_pay_stars": "Звезды",
+        "btn_pay_usdt": "USDT",
+        "btn_pay_usd": "USD",
+        "btn_pay_eur": "EUR",
+        "btn_pay_byn": "BYN",
+        "btn_pay_kzt": "KZT",
+        "btn_withdraw_usdt": "Вывод USDT",
+        "btn_withdraw_usd": "Вывод USD",
+        "btn_withdraw_eur": "Вывод EUR",
+        "btn_withdraw_byn": "Вывод BYN",
+        "btn_withdraw_kzt": "Вывод KZT",
         "btn_lang_ru": "Русский",
         "btn_lang_en": "English",
         "requisites_title": "Управление реквизитами",
@@ -58,7 +68,7 @@ TEXTS = {
         "lang_changed": "✅ Язык изменён на Русский",
         "lang_name": "Русский",
         "deal_type": "— Выберите тип сделки:",
-        "deal_pay": "Выбирете метод получения оплаты:",
+        "deal_pay": "Выберите метод получения оплаты:",
         "deal_create_title": "Создание сделки",
         "deal_type_label": "Тип",
         "deal_pay_label": "Оплата",
@@ -91,6 +101,11 @@ TEXTS = {
         "deal_pay_ton": "TON-кошелек",
         "deal_pay_card": "Карта",
         "deal_pay_stars": "Звезды",
+        "deal_pay_usdt": "USDT",
+        "deal_pay_usd": "USD",
+        "deal_pay_eur": "EUR",
+        "deal_pay_byn": "BYN",
+        "deal_pay_kzt": "KZT",
     },
     "en": {
         "welcome": (
@@ -136,6 +151,16 @@ TEXTS = {
         "btn_pay_ton": "To TON wallet",
         "btn_pay_card": "To card",
         "btn_pay_stars": "Stars",
+        "btn_pay_usdt": "USDT",
+        "btn_pay_usd": "USD",
+        "btn_pay_eur": "EUR",
+        "btn_pay_byn": "BYN",
+        "btn_pay_kzt": "KZT",
+        "btn_withdraw_usdt": "Withdraw USDT",
+        "btn_withdraw_usd": "Withdraw USD",
+        "btn_withdraw_eur": "Withdraw EUR",
+        "btn_withdraw_byn": "Withdraw BYN",
+        "btn_withdraw_kzt": "Withdraw KZT",
         "btn_lang_ru": "Русский",
         "btn_lang_en": "English",
         "requisites_title": "Payment details",
@@ -179,6 +204,11 @@ TEXTS = {
         "deal_pay_ton": "TON wallet",
         "deal_pay_card": "Card",
         "deal_pay_stars": "Stars",
+        "deal_pay_usdt": "USDT",
+        "deal_pay_usd": "USD",
+        "deal_pay_eur": "EUR",
+        "deal_pay_byn": "BYN",
+        "deal_pay_kzt": "KZT",
     },
 }
 
@@ -211,16 +241,47 @@ def welcome_text(lang: str | None = "ru") -> str:
     )
 
 
-def balance_text(lang: str | None = "ru", ton: float = 0.0, rub: float = 0.0, stars: int = 0) -> str:
-    return (
-        f"{ce('balance_card', '💳')} <b>{t(lang, 'balance_title')}</b>\n"
-        f"\n"
-        f"{ce('balance_ton', '💎')} TON: {ton:.2f}\n"
-        f"{ce('balance_rub', '💵')} RUB: {rub:.2f}\n"
-        f"{ce('balance_stars', '⭐')} Stars: {stars}\n"
-        f"\n"
-        f"{ce('deal_excl', '❗️')} {t(lang, 'balance_withdraw_hint')}"
-    )
+def balance_text(
+    lang: str | None = "ru",
+    *,
+    ton: float = 0.0,
+    rub: float = 0.0,
+    stars: int = 0,
+    usdt: float = 0.0,
+    usd: float = 0.0,
+    eur: float = 0.0,
+    byn: float = 0.0,
+    kzt: float = 0.0,
+) -> str:
+    from utils.currencies import BALANCE_GROUPS, BALANCE_META
+
+    values = {
+        "ton": ton,
+        "rub": rub,
+        "stars": stars,
+        "usdt": usdt,
+        "usd": usd,
+        "eur": eur,
+        "byn": byn,
+        "kzt": kzt,
+    }
+    lines = [
+        f"{ce('balance_card', '💳')} <b>{t(lang, 'balance_title')}</b>",
+        "",
+    ]
+    for group_name, keys in BALANCE_GROUPS:
+        lines.append(f"<b>{group_name}</b>")
+        for key in keys:
+            meta = BALANCE_META[key]
+            icon = ce(meta["emoji_key"], meta["fallback"])
+            val = values.get(key, 0)
+            if meta["integer"]:
+                lines.append(f"{icon} {meta['label']}: {int(val)}")
+            else:
+                lines.append(f"{icon} {meta['label']}: {float(val):.2f}")
+        lines.append("")
+    lines.append(f"{ce('deal_excl', '❗️')} {t(lang, 'balance_withdraw_hint')}")
+    return "\n".join(lines)
 
 
 def requisites_text(
@@ -312,7 +373,12 @@ def deal_type_labels(lang: str | None = "ru") -> dict[str, str]:
 
 def deal_pay_labels(lang: str | None = "ru") -> dict[str, str]:
     return {
-        "ton": f"💎 {t(lang, 'deal_pay_ton')}",
-        "card": f"💳 {t(lang, 'deal_pay_card')}",
-        "stars": f"⭐ {t(lang, 'deal_pay_stars')}",
+        "ton": f"{ce('balance_ton', '💎')} {t(lang, 'deal_pay_ton')}",
+        "card": f"{ce('balance_card', '💳')} {t(lang, 'deal_pay_card')}",
+        "stars": f"{ce('balance_stars', '⭐')} {t(lang, 'deal_pay_stars')}",
+        "usdt": f"{ce('balance_usdt', '🪙')} {t(lang, 'deal_pay_usdt')}",
+        "usd": f"{ce('balance_usd', '💸')} {t(lang, 'deal_pay_usd')}",
+        "eur": f"{ce('balance_eur', '💰')} {t(lang, 'deal_pay_eur')}",
+        "byn": f"{ce('balance_byn', '🇧🇾')} {t(lang, 'deal_pay_byn')}",
+        "kzt": f"{ce('balance_kzt', '🇰🇿')} {t(lang, 'deal_pay_kzt')}",
     }

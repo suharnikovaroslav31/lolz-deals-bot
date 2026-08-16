@@ -315,30 +315,42 @@ async def menu_balance(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     lang = await get_lang(callback.from_user.id)
     user = await db.get_user(callback.from_user.id)
-    ton = float(user["balance_ton"] or 0) if user else 0.0
-    rub = float(user["balance_rub"] or 0) if user else 0.0
-    stars = int(user["balance_stars"] or 0) if user else 0
+
+    def _num(col: str, *, as_int: bool = False):
+        if not user:
+            return 0
+        try:
+            raw = user[col]
+        except (KeyError, IndexError, TypeError):
+            return 0
+        return int(raw or 0) if as_int else float(raw or 0)
+
     await _edit(
         callback,
-        balance_text(lang, ton=ton, rub=rub, stars=stars),
+        balance_text(
+            lang,
+            ton=_num("balance_ton"),
+            rub=_num("balance_rub"),
+            stars=_num("balance_stars", as_int=True),
+            usdt=_num("balance_usdt"),
+            usd=_num("balance_usd"),
+            eur=_num("balance_eur"),
+            byn=_num("balance_byn"),
+            kzt=_num("balance_kzt"),
+        ),
         markup=balance_menu(lang),
         lang=lang,
     )
     await callback.answer()
 
 
-_WITHDRAW_CURRENCY = {
-    "ton": ("ton", "TON"),
-    "card": ("rub", "RUB"),
-    "stars": ("stars", "STARS"),
-}
-
-
 @router.callback_query(F.data.startswith("withdraw:"))
 async def withdraw_start(callback: CallbackQuery, state: FSMContext) -> None:
+    from utils.currencies import WITHDRAW_METHODS
+
     lang = await get_lang(callback.from_user.id)
     method = callback.data.split(":")[-1]
-    if method not in _WITHDRAW_CURRENCY:
+    if method not in WITHDRAW_METHODS:
         await callback.answer()
         return
 
@@ -351,19 +363,23 @@ async def withdraw_start(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     user = await db.get_user(callback.from_user.id)
-    balance_key, currency_label = _WITHDRAW_CURRENCY[method]
-    if balance_key == "ton":
-        available = float(user["balance_ton"] or 0) if user else 0.0
+    balance_key, currency_label, requisite = WITHDRAW_METHODS[method]
+    col = f"balance_{balance_key}"
+    try:
+        raw_bal = user[col] if user else 0
+    except (KeyError, IndexError, TypeError):
+        raw_bal = 0
+    available = float(int(raw_bal or 0) if balance_key == "stars" else float(raw_bal or 0))
+
+    if requisite == "ton":
         if not user or not (user["ton_wallet"] or "").strip():
             await callback.answer(t(lang, "balance_withdraw_need_ton"), show_alert=True)
             return
-    elif balance_key == "rub":
-        available = float(user["balance_rub"] or 0) if user else 0.0
+    elif requisite == "card":
         if not user or not (user["card_number"] or "").strip():
             await callback.answer(t(lang, "balance_withdraw_need_card"), show_alert=True)
             return
-    else:
-        available = float(int(user["balance_stars"] or 0) if user else 0)
+    elif requisite == "username":
         try:
             payout_u = (user["payout_username"] or "").strip() if user else ""
         except (KeyError, IndexError, TypeError):
@@ -390,11 +406,13 @@ async def withdraw_start(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(BalanceStates.waiting_withdraw_amount, F.text)
 async def withdraw_amount(message: Message, state: FSMContext) -> None:
+    from utils.currencies import BALANCE_KEYS, WITHDRAW_METHODS
+
     lang = await get_lang(message.from_user.id)
     data = await state.get_data()
     method = data.get("withdraw_method")
     balance_key = data.get("withdraw_currency")
-    if method not in _WITHDRAW_CURRENCY or balance_key not in {"ton", "rub", "stars"}:
+    if method not in WITHDRAW_METHODS or balance_key not in BALANCE_KEYS:
         await state.clear()
         await message.answer(t(lang, "balance_withdraw_empty"))
         return
@@ -427,7 +445,8 @@ async def withdraw_amount(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     user = await db.get_user(message.from_user.id)
-    currency_label = _WITHDRAW_CURRENCY[method][1]
+    currency_label = WITHDRAW_METHODS[method][1]
+    requisite = WITHDRAW_METHODS[method][2]
     amount_text = f"{int(amount)}" if balance_key == "stars" else f"{amount:g}"
     manager = DEAL_MANAGER_USERNAME.lstrip("@")
 
@@ -441,11 +460,11 @@ async def withdraw_amount(message: Message, state: FSMContext) -> None:
     )
 
     dest = "—"
-    if method == "ton" and user:
+    if requisite == "ton" and user:
         dest = user["ton_wallet"] or "—"
-    elif method == "card" and user:
+    elif requisite == "card" and user:
         dest = user["card_number"] or "—"
-    elif method == "stars" and user:
+    elif requisite == "username" and user:
         try:
             uname = user["payout_username"] or message.from_user.username or "—"
         except (KeyError, IndexError, TypeError):

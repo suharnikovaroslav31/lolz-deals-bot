@@ -99,14 +99,22 @@ def deal_type_menu(lang: str | None = "ru") -> InlineKeyboardMarkup:
 
 
 def deal_pay_menu(lang: str | None = "ru") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [_btn(t(lang, "btn_pay_ton"), fallback_emoji="💎", callback="deal:pay:ton", icon_key="btn_pay_ton")],
-            [_btn(t(lang, "btn_pay_card"), fallback_emoji="💳", callback="deal:pay:card", icon_key="btn_pay_card")],
-            [_btn(t(lang, "btn_pay_stars"), fallback_emoji="⭐", callback="deal:pay:stars", icon_key="btn_pay_stars")],
-            [_btn(t(lang, "btn_back"), fallback_emoji="🔄", callback="menu:home", icon_key="btn_back_alt")],
-        ]
+    from utils.currencies import PAY_METHODS, rows_of
+
+    buttons = [
+        _btn(
+            t(lang, text_key),
+            fallback_emoji=fallback,
+            callback=f"deal:pay:{pay_key}",
+            icon_key=icon_key,
+        )
+        for pay_key, text_key, fallback, icon_key in PAY_METHODS
+    ]
+    rows = rows_of(buttons, 2)
+    rows.append(
+        [_btn(t(lang, "btn_back"), fallback_emoji="🔄", callback="menu:home", icon_key="btn_back_alt")]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def language_menu(lang: str | None = "ru") -> InlineKeyboardMarkup:
@@ -148,35 +156,32 @@ def back_menu(lang: str | None = "ru") -> InlineKeyboardMarkup:
 
 
 def balance_menu(lang: str | None = "ru") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _btn(
-                    t(lang, "btn_withdraw_ton"),
-                    fallback_emoji="💎",
-                    callback="withdraw:ton",
-                    icon_key="btn_pay_ton",
-                )
-            ],
-            [
-                _btn(
-                    t(lang, "btn_withdraw_card"),
-                    fallback_emoji="💳",
-                    callback="withdraw:card",
-                    icon_key="btn_pay_card",
-                )
-            ],
-            [
-                _btn(
-                    t(lang, "btn_withdraw_stars"),
-                    fallback_emoji="⭐",
-                    callback="withdraw:stars",
-                    icon_key="btn_pay_stars",
-                )
-            ],
-            [_btn(t(lang, "btn_back"), fallback_emoji="🔙", callback="menu:home", icon_key="btn_back")],
-        ]
-    )
+    from utils.currencies import WITHDRAW_METHODS, rows_of
+
+    withdraw_btns = {
+        "ton": ("btn_withdraw_ton", "💎", "btn_pay_ton"),
+        "card": ("btn_withdraw_card", "💳", "btn_pay_card"),
+        "byn": ("btn_withdraw_byn", "🇧🇾", "btn_pay_byn"),
+        "kzt": ("btn_withdraw_kzt", "🇰🇿", "btn_pay_kzt"),
+        "stars": ("btn_withdraw_stars", "⭐", "btn_pay_stars"),
+        "usdt": ("btn_withdraw_usdt", "🪙", "btn_pay_usdt"),
+        "usd": ("btn_withdraw_usd", "💸", "btn_pay_usd"),
+        "eur": ("btn_withdraw_eur", "💰", "btn_pay_eur"),
+    }
+    buttons = []
+    for method in WITHDRAW_METHODS:
+        text_key, fallback, icon_key = withdraw_btns[method]
+        buttons.append(
+            _btn(
+                t(lang, text_key),
+                fallback_emoji=fallback,
+                callback=f"withdraw:{method}",
+                icon_key=icon_key,
+            )
+        )
+    rows = rows_of(buttons, 2)
+    rows.append([_btn(t(lang, "btn_back"), fallback_emoji="🔙", callback="menu:home", icon_key="btn_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def seller_deal_kb(code: str) -> InlineKeyboardMarkup:

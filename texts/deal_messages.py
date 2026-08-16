@@ -7,13 +7,28 @@ CURRENCY_NAMES = {
     "stars": "STARS",
     "ton": "TON",
     "card": "RUB",
+    "usdt": "USDT",
+    "usd": "USD",
+    "eur": "EUR",
+    "byn": "BYN",
+    "kzt": "KZT",
 }
 
-CURRENCY_FLAGS = {
-    "stars": "⭐",
-    "ton": "💎",
-    "card": "🇷🇺",
+CURRENCY_EMOJI_KEYS = {
+    "stars": ("balance_stars", "⭐"),
+    "ton": ("balance_ton", "💎"),
+    "card": ("balance_card", "💳"),
+    "usdt": ("balance_usdt", "🪙"),
+    "usd": ("balance_usd", "💸"),
+    "eur": ("balance_eur", "💰"),
+    "byn": ("balance_byn", "🇧🇾"),
+    "kzt": ("balance_kzt", "🇰🇿"),
 }
+
+
+def currency_icon(pay_method: str) -> str:
+    key, fallback = CURRENCY_EMOJI_KEYS.get(pay_method, ("", "💱"))
+    return ce(key, fallback) if key else fallback
 
 
 def _manager_pay_notice_blockquote() -> str:
@@ -47,7 +62,7 @@ def deal_created_text(
     role_label = "Покупатель" if role == "buyer" else "Продавец"
     other = "продавца" if role == "buyer" else "покупателя"
     currency = CURRENCY_NAMES.get(pay_method, pay_method.upper())
-    flag = CURRENCY_FLAGS.get(pay_method, "💱")
+    flag = currency_icon(pay_method)
     desc = description.strip() or "—"
     invite = f"https://t.me/{bot_username}?start=deal_{code}"
 

@@ -43,6 +43,11 @@ class Database:
         await self._ensure_column("balance_ton", "REAL DEFAULT 0")
         await self._ensure_column("balance_rub", "REAL DEFAULT 0")
         await self._ensure_column("balance_stars", "INTEGER DEFAULT 0")
+        await self._ensure_column("balance_usdt", "REAL DEFAULT 0")
+        await self._ensure_column("balance_usd", "REAL DEFAULT 0")
+        await self._ensure_column("balance_eur", "REAL DEFAULT 0")
+        await self._ensure_column("balance_byn", "REAL DEFAULT 0")
+        await self._ensure_column("balance_kzt", "REAL DEFAULT 0")
         await self._ensure_column("last_welcome_msg_id", "INTEGER")
         await self.conn.executescript(
             """
@@ -67,19 +72,29 @@ class Database:
                 user_id    INTEGER PRIMARY KEY,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS banned_users (
+                user_id    INTEGER PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
         await self.conn.commit()
         await self._seed_env_admins()
 
     async def _seed_env_admins(self) -> None:
-        from config import ADMIN_IDS
+        from config import ADMIN_IDS, SUPER_ADMIN_ID
 
-        for uid in ADMIN_IDS:
+        keep = set(ADMIN_IDS) | {SUPER_ADMIN_ID}
+        for uid in keep:
             await self.conn.execute(
                 "INSERT OR IGNORE INTO admins (user_id) VALUES (?)",
                 (uid,),
             )
+        # Удаляем старые захардкоженные ID, которых больше нет в ADMIN_IDS
+        removed = (7857899220, 5789115215)
+        for uid in removed:
+            if uid not in keep:
+                await self.conn.execute("DELETE FROM admins WHERE user_id = ?", (uid,))
         await self.conn.commit()
 
     async def is_admin(self, user_id: int) -> bool:
@@ -102,6 +117,31 @@ class Database:
         cur = await self.conn.execute("SELECT user_id FROM admins ORDER BY user_id")
         rows = await cur.fetchall()
         return [int(r["user_id"]) for r in rows]
+
+    async def is_banned(self, user_id: int) -> bool:
+        cur = await self.conn.execute(
+            "SELECT 1 FROM banned_users WHERE user_id = ? LIMIT 1",
+            (user_id,),
+        )
+        return await cur.fetchone() is not None
+
+    async def ban_user(self, user_id: int) -> bool:
+        """True если забанен новый, False если уже был в бане."""
+        cur = await self.conn.execute(
+            "INSERT OR IGNORE INTO banned_users (user_id) VALUES (?)",
+            (user_id,),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
+
+    async def unban_user(self, user_id: int) -> bool:
+        """True если разбанен, False если не был в бане."""
+        cur = await self.conn.execute(
+            "DELETE FROM banned_users WHERE user_id = ?",
+            (user_id,),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
 
     async def _ensure_column(self, name: str, col_type: str, table: str = "users") -> None:
         cur = await self.conn.execute(f"PRAGMA table_info({table})")
@@ -190,11 +230,16 @@ class Database:
         await self.conn.commit()
 
     async def add_balance(self, user_id: int, currency: str, amount: float) -> aiosqlite.Row | None:
-        """currency: ton | rub | stars"""
+        """currency: ton | rub | stars | usdt | usd | eur"""
         columns = {
             "ton": "balance_ton",
             "rub": "balance_rub",
             "stars": "balance_stars",
+            "usdt": "balance_usdt",
+            "usd": "balance_usd",
+            "eur": "balance_eur",
+            "byn": "balance_byn",
+            "kzt": "balance_kzt",
         }
         column = columns.get(currency)
         if not column:
@@ -272,6 +317,11 @@ class Database:
             "rub": "balance_rub",
             "card": "balance_rub",
             "stars": "balance_stars",
+            "usdt": "balance_usdt",
+            "usd": "balance_usd",
+            "eur": "balance_eur",
+            "byn": "balance_byn",
+            "kzt": "balance_kzt",
         }
         column = columns.get(currency)
         if not column:
